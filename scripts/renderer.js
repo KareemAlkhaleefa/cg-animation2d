@@ -1,4 +1,5 @@
 import * as CG from './transforms.js';
+import { Matrix } from './matrix.js';
 
 class Renderer {
     // canvas:              object ({id: __, width: __, height: __})
@@ -17,7 +18,7 @@ class Renderer {
 
         this.models = {
             slide0: [
-                // example model (diamond) -> should be replaced with actual model
+
                 {
                     vertices: [
                         CG.Vector3(400, 150, 1),
@@ -28,10 +29,53 @@ class Renderer {
                     transform: null
                 }
             ],
-            slide1: [],
-            slide2: [],
+            slide1: [
+
+                {
+                    vertices: this.starVertices(12, 120, 95),
+                    center: [400, 300],
+                    rev_per_sec: 0.25,      // positive = counter-clockwise, negative = clockwise
+                    color: [130, 130, 130, 255],
+                    transform: new Matrix(3, 3)
+                }
+            ],
+            slide2: [
+                // big star: grows / shrinks uniformly
+                {
+                    vertices: this.starVertices(5, 110, 45),
+                    center: [270, 320],
+                    cycles_per_sec: 0.5,    // rate of grow / shrink
+                    magnitude: [0.3, 0.3],  // scale goes from (1 - magnitude) to (1 + magnitude) in x and y
+                    color: [255, 205, 60, 255],
+                    transform: new Matrix(3, 3)
+                },
+                
+                // sparkle: grows / shrinks non-uniformly (more in x than in y)
+                {
+                    vertices: this.starVertices(4, 70, 18),
+                    center: [570, 320],
+                    cycles_per_sec: 1.0,
+                    magnitude: [0.7, 0.2],
+                    color: [90, 170, 255, 255],
+                    transform: new Matrix(3, 3)
+                }
+            ],
             slide3: []
         };
+    }
+
+    // star centered on (0, 0) with its first point straight up
+    // num_points:    int
+    // outer_radius:  float (center to tip)
+    // inner_radius:  float (center to notch between tips)
+    starVertices(num_points, outer_radius, inner_radius) {
+        let vertices = [];
+        for (let i = 0; i < num_points * 2; i++) {
+            let radius = (i % 2 === 0) ? outer_radius : inner_radius;
+            let angle = Math.PI / 2.0 + i * Math.PI / num_points;
+            vertices.push(CG.Vector3(radius * Math.cos(angle), radius * Math.sin(angle), 1));
+        }
+        return vertices;
     }
 
     // flag:  bool
@@ -86,6 +130,36 @@ class Renderer {
     //
     updateTransforms(time, delta_time) {
         // TODO: update any transformations needed for animation
+        let seconds = time / 1000.0;
+        let translate = new Matrix(3, 3);
+
+        // slide 1: rotate about own center, then move to position
+        let rotate = new Matrix(3, 3);
+        for (let model of this.models.slide1) {
+            let theta = model.rev_per_sec * 2.0 * Math.PI * seconds;
+            CG.mat3x3Rotate(rotate, theta);
+            CG.mat3x3Translate(translate, model.center[0], model.center[1]);
+            model.transform = Matrix.multiply([translate, rotate]);
+        }
+
+        // slide 2: scale about own center, then move to position
+        let scale = new Matrix(3, 3);
+        for (let model of this.models.slide2) {
+            let wave = Math.sin(model.cycles_per_sec * 2.0 * Math.PI * seconds);
+            let sx = 1.0 + model.magnitude[0] * wave;
+            let sy = 1.0 + model.magnitude[1] * wave;
+            CG.mat3x3Scale(scale, sx, sy);
+            CG.mat3x3Translate(translate, model.center[0], model.center[1]);
+            model.transform = Matrix.multiply([translate, scale]);
+        }
+    }
+
+    // draw every model in the list with its transform applied
+    drawModels(models) {
+        for (let model of models) {
+            let vertices = model.vertices.map((vertex) => Matrix.multiply([model.transform, vertex]));
+            this.drawConvexPolygon(vertices, model.color);
+        }
     }
     
     //
@@ -115,7 +189,7 @@ class Renderer {
         
         // Following lines are example of drawing a single polygon
         // (this should be removed/edited after you implement the slide)
-        let teal = [0, 128, 128, 255];
+        let teal = [238, 103, 48, 255];
         this.drawConvexPolygon(this.models.slide0[0].vertices, teal);
     }
 
@@ -123,8 +197,7 @@ class Renderer {
     drawSlide1() {
         // TODO: draw at least 3 polygons that spin about their own centers
         //   - have each polygon spin at a different speed / direction
-        
-        
+        this.drawModels(this.models.slide1);
     }
 
     //
@@ -132,8 +205,7 @@ class Renderer {
         // TODO: draw at least 2 polygons grow and shrink about their own centers
         //   - have each polygon grow / shrink different sizes
         //   - try at least 1 polygon that grows / shrinks non-uniformly in the x and y directions
-
-
+        this.drawModels(this.models.slide2);
     }
 
     //
